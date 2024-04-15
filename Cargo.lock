@@ -3480,6 +3480,7 @@ dependencies = [
  "dialoguer",
  "dunce",
  "ethers-contract",
+ "ethers-contract-abigen",
  "ethers-core",
  "evm-disassembler",
  "eyre",

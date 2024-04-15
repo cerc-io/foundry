@@ -277,9 +277,10 @@ async fn evaluate_prelude(
         load_prelude_file(dispatcher, prelude_dir).await?;
         println!("{}\n", Paint::green("Prelude source file loaded successfully!"));
     } else {
-        let prelude_sources = fs::files_with_ext(prelude_dir, "sol");
-        let print_success_msg = !prelude_sources.is_empty();
+        let prelude_sources = fs::files_with_ext(&prelude_dir, "sol");
+        let mut print_success_msg = false;
         for source_file in prelude_sources {
+            print_success_msg = true;
             println!("{} {}", Paint::yellow("Loading prelude source file:"), source_file.display(),);
             load_prelude_file(dispatcher, source_file).await?;
         }
