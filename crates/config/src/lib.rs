@@ -26,7 +26,7 @@ use foundry_compilers::{
 };
 use inflector::Inflector;
 use regex::Regex;
-use revm_primitives::SpecId;
+use revm_primitives::{fixed_bytes, FixedBytes, SpecId};
 use semver::Version;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{
@@ -390,6 +390,9 @@ pub struct Config {
     /// Whether to enable safety checks for `vm.getCode` and `vm.getDeployedCode` invocations.
     /// If disabled, it is possible to access artifacts which were not recompiled or cached.
     pub unchecked_cheatcode_artifacts: bool,
+    
+    /// CREATE2 salt to use for the library deployment in scripts.
+    pub create2_library_salt: B256,
 
     /// The root path where the config detection started from, `Config::with_root`
     #[doc(hidden)]
@@ -446,6 +449,11 @@ impl Config {
     ///
     /// `0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38`
     pub const DEFAULT_SENDER: Address = address!("1804c8AB1F12E6bbf3894d4083f33e07309d1f38");
+
+    /// Default salt for create2 library deployments
+    /// 
+    /// cast keccak 'foundry create2'
+    pub const DEFAULT_CREATE2_LIBRARY_SALT: FixedBytes<32> = fixed_bytes!("19bf59b7b67ae8edcbc6e53616080f61fa99285c061450ad601b0bc40c9adfc9");
 
     /// Returns the current `Config`
     ///
@@ -1938,6 +1946,7 @@ impl Default for Config {
             doc: Default::default(),
             labels: Default::default(),
             unchecked_cheatcode_artifacts: false,
+            create2_library_salt: Config::DEFAULT_CREATE2_LIBRARY_SALT,
             __non_exhaustive: (),
             __warnings: vec![],
         }
