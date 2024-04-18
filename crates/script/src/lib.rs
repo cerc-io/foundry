@@ -599,10 +599,7 @@ impl ScriptConfig {
             });
         }
 
-        Ok(ScriptRunner::new(
-            builder.build(env, db),
-            self.evm_opts.clone(),
-        ))
+        Ok(ScriptRunner::new(builder.build(env, db), self.evm_opts.clone()))
     }
 }
 

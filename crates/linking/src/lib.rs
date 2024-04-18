@@ -203,15 +203,16 @@ impl<'a> Linker<'a> {
             .collect::<HashMap<_, _>>();
 
         let mut libs_to_deploy = Vec::new();
-        
-        // Iteratively compute addresses and link libraries until we have no unlinked libraries left.
+
+        // Iteratively compute addresses and link libraries until we have no unlinked libraries
+        // left.
         while !needed_libraries.is_empty() {
             // Find any library which is fully linked.
             let deployable = needed_libraries
                 .iter()
                 .find(|(_, bytecode)| !bytecode.is_unlinked())
                 .map(|(id, _)| *id);
-            
+
             // If we haven't found any deployable library, it means we have a cyclic dependency.
             let Some(id) = deployable else {
                 return Err(LinkerError::CyclicDependency);

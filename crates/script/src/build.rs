@@ -44,12 +44,7 @@ impl BuildData {
 
     /// Links the build data with given libraries, using sender and nonce to compute addresses of
     /// missing libraries.
-    pub fn link(
-        self,
-        config: &Config,
-        sender: Address,
-        nonce: u64,
-    ) -> Result<LinkedBuildData> {
+    pub fn link(self, config: &Config, sender: Address, nonce: u64) -> Result<LinkedBuildData> {
         let known_libraries = config.libraries_with_remappings()?;
         let (libraries, predeploy_libs) = if let Ok(output) = self.get_linker().link_with_create2(
             known_libraries.clone(),
@@ -57,7 +52,13 @@ impl BuildData {
             config.create2_library_salt,
             &self.target,
         ) {
-            (output.libraries, ScriptPredeployLibraries::Create2(output.libs_to_deploy, config.create2_library_salt))
+            (
+                output.libraries,
+                ScriptPredeployLibraries::Create2(
+                    output.libs_to_deploy,
+                    config.create2_library_salt,
+                ),
+            )
         } else {
             let output = self.get_linker().link_with_nonce_or_address(
                 known_libraries,
@@ -121,9 +122,8 @@ impl LinkedBuildData {
             &libraries,
         )?;
 
-        let known_contracts = ContractsByArtifact::new(
-            build_data.get_linker().get_linked_artifacts(&libraries)?,
-        );
+        let known_contracts =
+            ContractsByArtifact::new(build_data.get_linker().get_linked_artifacts(&libraries)?);
 
         Ok(Self { build_data, known_contracts, libraries, predeploy_libraries, sources })
     }

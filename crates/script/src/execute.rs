@@ -22,7 +22,7 @@ use foundry_config::{Config, NamedChain};
 use foundry_debugger::Debugger;
 use foundry_evm::{
     decode::decode_console_logs,
-    inspectors::cheatcodes::{BroadcastableTransactions},
+    inspectors::cheatcodes::BroadcastableTransactions,
     traces::{
         identifier::{SignaturesIdentifier, TraceIdentifiers},
         render_trace_arena, CallTraceDecoder, CallTraceDecoderBuilder, TraceKind,

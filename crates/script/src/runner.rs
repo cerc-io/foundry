@@ -9,7 +9,11 @@ use eyre::Result;
 use foundry_cheatcodes::BroadcastableTransaction;
 use foundry_config::Config;
 use foundry_evm::{
-    constants::{CALLER, DEFAULT_CREATE2_DEPLOYER}, executors::{DeployResult, EvmError, ExecutionErr, Executor, RawCallResult}, opts::EvmOpts, revm::interpreter::{return_ok, InstructionResult}, traces::{TraceKind, Traces}
+    constants::{CALLER, DEFAULT_CREATE2_DEPLOYER},
+    executors::{DeployResult, EvmError, ExecutionErr, Executor, RawCallResult},
+    opts::EvmOpts,
+    revm::interpreter::{return_ok, InstructionResult},
+    traces::{TraceKind, Traces},
 };
 use yansi::Paint;
 
@@ -58,37 +62,38 @@ impl ScriptRunner {
 
         // Deploy libraries
         match libraries {
-            ScriptPredeployLibraries::Default(libraries) => libraries
-                .iter()
-                .for_each(|code| {
-                    let result = self.executor
-                        .deploy(self.evm_opts.sender, code.clone(), U256::ZERO, None)
-                        .expect("couldn't deploy library")
-                        .raw;
+            ScriptPredeployLibraries::Default(libraries) => libraries.iter().for_each(|code| {
+                let result = self
+                    .executor
+                    .deploy(self.evm_opts.sender, code.clone(), U256::ZERO, None)
+                    .expect("couldn't deploy library")
+                    .raw;
 
-                    if let Some(deploy_traces) = result.traces {
-                        traces.push((TraceKind::Deployment, deploy_traces));
-                    }
+                if let Some(deploy_traces) = result.traces {
+                    traces.push((TraceKind::Deployment, deploy_traces));
+                }
 
-                    library_transactions.push_back(BroadcastableTransaction {
-                        rpc: self.evm_opts.fork_url.clone(),
-                        transaction: TransactionRequest {
-                            from: Some(self.evm_opts.sender),
-                            input: Some(code.clone()).into(),
-                            nonce: Some(sender_nonce + library_transactions.len() as u64),
-                            ..Default::default()
-                        },
-                    })
-                }),
+                library_transactions.push_back(BroadcastableTransaction {
+                    rpc: self.evm_opts.fork_url.clone(),
+                    transaction: TransactionRequest {
+                        from: Some(self.evm_opts.sender),
+                        input: Some(code.clone()).into(),
+                        nonce: Some(sender_nonce + library_transactions.len() as u64),
+                        ..Default::default()
+                    },
+                })
+            }),
             ScriptPredeployLibraries::Create2(libraries, salt) => {
                 for library in libraries {
-                    let address = DEFAULT_CREATE2_DEPLOYER.create2_from_code(salt, library.as_ref());
+                    let address =
+                        DEFAULT_CREATE2_DEPLOYER.create2_from_code(salt, library.as_ref());
                     // Skip if already deployed
                     if !self.executor.is_empty_code(address)? {
                         continue;
                     }
                     let calldata = [salt.as_ref(), library.as_ref()].concat();
-                    let result = self.executor
+                    let result = self
+                        .executor
                         .call_raw_committing(
                             self.evm_opts.sender,
                             DEFAULT_CREATE2_DEPLOYER,
@@ -112,7 +117,7 @@ impl ScriptRunner {
                         },
                     });
                 }
-            },
+            }
         };
 
         let address = CALLER.create(self.executor.get_nonce(CALLER)?);
@@ -136,7 +141,13 @@ impl ScriptRunner {
         // Optionally call the `setUp` function
         let (success, gas_used, labeled_addresses, transactions, debug) = if !setup {
             self.executor.backend.set_test_contract(address);
-            (true, 0, Default::default(), Some(library_transactions), vec![constructor_debug].into_iter().collect())
+            (
+                true,
+                0,
+                Default::default(),
+                Some(library_transactions),
+                vec![constructor_debug].into_iter().collect(),
+            )
         } else {
             match self.executor.setup(Some(self.evm_opts.sender), address, None) {
                 Ok(RawCallResult {
@@ -151,7 +162,7 @@ impl ScriptRunner {
                 }) => {
                     traces.extend(setup_traces.map(|traces| (TraceKind::Setup, traces)));
                     logs.extend_from_slice(&setup_logs);
-                    
+
                     self.maybe_correct_nonce(sender_nonce, library_transactions.len())?;
 
                     if let Some(txs) = setup_transactions {
