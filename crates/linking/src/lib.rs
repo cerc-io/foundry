@@ -319,22 +319,20 @@ mod tests {
         fn test_with_sender_and_nonce(self, sender: Address, initial_nonce: u64) {
             let linker = Linker::new(self.project.root(), self.output.artifact_ids().collect());
             for (id, identifier) in self.iter_linking_targets(&linker) {
-                let output = linker.link_with_nonce_or_address(Default::default(), sender, initial_nonce, id).expect("Linking failed");
-                self.validate_assertions(
-                    identifier,
-                    output
-                );
+                let output = linker
+                    .link_with_nonce_or_address(Default::default(), sender, initial_nonce, id)
+                    .expect("Linking failed");
+                self.validate_assertions(identifier, output);
             }
         }
 
         fn test_with_create2(self, sender: Address, salt: B256) {
             let linker = Linker::new(self.project.root(), self.output.artifact_ids().collect());
             for (id, identifier) in self.iter_linking_targets(&linker) {
-                let output = linker.link_with_create2(Default::default(), sender, salt, id).expect("Linking failed");
-                self.validate_assertions(
-                    identifier,
-                    output
-                );
+                let output = linker
+                    .link_with_create2(Default::default(), sender, salt, id)
+                    .expect("Linking failed");
+                self.validate_assertions(identifier, output);
             }
         }
 
@@ -655,7 +653,12 @@ mod tests {
                         ),
                     ],
                 )
-                .test_with_create2(Address::default(), fixed_bytes!("19bf59b7b67ae8edcbc6e53616080f61fa99285c061450ad601b0bc40c9adfc9"));
+                .test_with_create2(
+                    Address::default(),
+                    fixed_bytes!(
+                        "19bf59b7b67ae8edcbc6e53616080f61fa99285c061450ad601b0bc40c9adfc9"
+                    ),
+                );
         });
     }
 }
