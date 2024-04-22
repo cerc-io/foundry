@@ -1,6 +1,5 @@
-use std::collections::VecDeque;
-use crate::build::ScriptPredeployLibraries;
 use super::ScriptResult;
+use crate::build::ScriptPredeployLibraries;
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_rpc_types::TransactionRequest;
 use eyre::Result;
@@ -13,6 +12,7 @@ use foundry_evm::{
     revm::interpreter::{return_ok, InstructionResult},
     traces::{TraceKind, Traces},
 };
+use std::collections::VecDeque;
 use yansi::Paint;
 
 /// Drives script execution
