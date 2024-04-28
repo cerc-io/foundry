@@ -139,7 +139,13 @@ async fn test_invariant() {
             ),
             (
                 "default/fuzz/invariant/common/InvariantCalldataDictionary.t.sol:InvariantCalldataDictionary",
-                vec![("invariant_owner_never_changes()", true, None, None, None)],
+                vec![(
+                    "invariant_owner_never_changes()",
+                    false,
+                    Some("<empty revert data>".into()),
+                    None,
+                    None,
+                )],
             ),
             (
                 "default/fuzz/invariant/common/InvariantAssume.t.sol:InvariantAssume",
@@ -156,6 +162,20 @@ async fn test_invariant() {
             (
                 "default/fuzz/invariant/target/FuzzedTargetContracts.t.sol:DynamicTargetContract",
                 vec![("invariant_dynamic_targets()", true, None, None, None)],
+            ),
+            (
+                "default/fuzz/invariant/common/InvariantFixtures.t.sol:InvariantFixtures",
+                vec![(
+                    "invariant_target_not_compromised()",
+                    false,
+                    Some("<empty revert data>".into()),
+                    None,
+                    None,
+                )],
+            ),
+            (
+                "default/fuzz/invariant/common/InvariantShrinkBigSequence.t.sol:ShrinkBigSequenceTest",
+                vec![("invariant_shrink_big_sequence()", true, None, None, None)],
             ),
         ]),
     );
@@ -314,6 +334,44 @@ async fn test_shrink(opts: TestOptions, contract_pattern: &str) {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[cfg_attr(windows, ignore = "for some reason there's different rng")]
+async fn test_shrink_big_sequence() {
+    let mut opts = TEST_DATA_DEFAULT.test_opts.clone();
+    opts.fuzz.seed = Some(U256::from(119u32));
+
+    let filter =
+        Filter::new(".*", ".*", ".*fuzz/invariant/common/InvariantShrinkBigSequence.t.sol");
+    let mut runner = TEST_DATA_DEFAULT.runner();
+    runner.test_options = opts.clone();
+    runner.test_options.invariant.runs = 1;
+    runner.test_options.invariant.depth = 500;
+    let results = runner.test_collect(&filter);
+    let results =
+        results.values().last().expect("`InvariantShrinkBigSequence` should be testable.");
+
+    let result = results
+        .test_results
+        .values()
+        .last()
+        .expect("`InvariantShrinkBigSequence` should be testable.");
+
+    assert_eq!(result.status, TestStatus::Failure);
+
+    let counter = result
+        .counterexample
+        .as_ref()
+        .expect("`InvariantShrinkBigSequence` should have failed with a counterexample.");
+
+    match counter {
+        CounterExample::Single(_) => panic!("CounterExample should be a sequence."),
+        CounterExample::Sequence(sequence) => {
+            // ensure shrinks to same sequence of 77
+            assert_eq!(sequence.len(), 77);
+        }
+    };
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_invariant_preserve_state() {
     let filter = Filter::new(".*", ".*", ".*fuzz/invariant/common/InvariantPreserveState.t.sol");
     let mut runner = TEST_DATA_DEFAULT.runner();
@@ -348,25 +406,8 @@ async fn test_invariant_preserve_state() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_invariant_calldata_fuzz_dictionary_addresses() {
-    // should not fail with default options (address dict not finite)
+async fn test_invariant_with_address_fixture() {
     let mut runner = TEST_DATA_DEFAULT.runner();
-    let results = runner.test_collect(&Filter::new(
-        ".*",
-        ".*",
-        ".*fuzz/invariant/common/InvariantCalldataDictionary.t.sol",
-    ));
-    assert_multiple(
-        &results,
-        BTreeMap::from([(
-            "default/fuzz/invariant/common/InvariantCalldataDictionary.t.sol:InvariantCalldataDictionary",
-            vec![("invariant_owner_never_changes()", true, None, None, None)],
-        )]),
-    );
-
-    // same test should fail when calldata address dict is bounded
-    // set address dictionary to single entry to fail fast
-    runner.test_options.invariant.dictionary.max_calldata_fuzz_dictionary_addresses = 1;
     let results = runner.test_collect(&Filter::new(
         ".*",
         ".*",
@@ -407,6 +448,8 @@ async fn test_invariant_assume_does_not_revert() {
 async fn test_invariant_assume_respects_restrictions() {
     let filter = Filter::new(".*", ".*", ".*fuzz/invariant/common/InvariantAssume.t.sol");
     let mut runner = TEST_DATA_DEFAULT.runner();
+    runner.test_options.invariant.runs = 1;
+    runner.test_options.invariant.depth = 10;
     runner.test_options.invariant.max_assume_rejects = 1;
     let results = runner.test_collect(&filter);
     assert_multiple(
@@ -469,5 +512,27 @@ async fn test_invariant_fuzzed_selected_targets() {
                 )],
             ),
         ]),
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_invariant_fixtures() {
+    let filter = Filter::new(".*", ".*", ".*fuzz/invariant/common/InvariantFixtures.t.sol");
+    let mut runner = TEST_DATA_DEFAULT.runner();
+    runner.test_options.invariant.runs = 1;
+    runner.test_options.invariant.depth = 100;
+    let results = runner.test_collect(&filter);
+    assert_multiple(
+        &results,
+        BTreeMap::from([(
+            "default/fuzz/invariant/common/InvariantFixtures.t.sol:InvariantFixtures",
+            vec![(
+                "invariant_target_not_compromised()",
+                false,
+                Some("<empty revert data>".into()),
+                None,
+                None,
+            )],
+        )]),
     );
 }

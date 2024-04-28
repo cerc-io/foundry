@@ -145,6 +145,7 @@ interface Vm {
     function assertTrue(bool condition, string calldata error) external pure;
     function assume(bool condition) external pure;
     function blobBaseFee(uint256 newBlobBaseFee) external;
+    function blobhashes(bytes32[] calldata hashes) external;
     function breakpoint(string calldata char) external;
     function breakpoint(string calldata char, bool value) external;
     function broadcast() external;
@@ -186,7 +187,7 @@ interface Vm {
     function envBytes32(string calldata name, string calldata delim) external view returns (bytes32[] memory value);
     function envBytes(string calldata name) external view returns (bytes memory value);
     function envBytes(string calldata name, string calldata delim) external view returns (bytes[] memory value);
-    function envExists(string calldata name) external view returns (bool exists);
+    function envExists(string calldata name) external view returns (bool result);
     function envInt(string calldata name) external view returns (int256 value);
     function envInt(string calldata name, string calldata delim) external view returns (int256[] memory value);
     function envOr(string calldata name, bool defaultValue) external view returns (bool value);
@@ -231,6 +232,7 @@ interface Vm {
     function ffi(string[] calldata commandInput) external returns (bytes memory result);
     function fsMetadata(string calldata path) external view returns (FsMetadata memory metadata);
     function getBlobBaseFee() external view returns (uint256 blobBaseFee);
+    function getBlobhashes() external view returns (bytes32[] memory hashes);
     function getBlockNumber() external view returns (uint256 height);
     function getBlockTimestamp() external view returns (uint256 timestamp);
     function getCode(string calldata artifactPath) external view returns (bytes memory creationBytecode);
@@ -355,6 +357,7 @@ interface Vm {
     function serializeJson(string calldata objectKey, string calldata value) external returns (string memory json);
     function serializeString(string calldata objectKey, string calldata valueKey, string calldata value) external returns (string memory json);
     function serializeString(string calldata objectKey, string calldata valueKey, string[] calldata values) external returns (string memory json);
+    function serializeUintToHex(string calldata objectKey, string calldata valueKey, uint256 value) external returns (string memory json);
     function serializeUint(string calldata objectKey, string calldata valueKey, uint256 value) external returns (string memory json);
     function serializeUint(string calldata objectKey, string calldata valueKey, uint256[] calldata values) external returns (string memory json);
     function setEnv(string calldata name, string calldata value) external;
