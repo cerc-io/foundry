@@ -3969,7 +3969,6 @@ dependencies = [
  "eyre",
  "foundry-cheatcodes-spec",
  "foundry-common",
- "foundry-compilers",
  "foundry-config",
  "foundry-macros",
  "foundry-test-utils",

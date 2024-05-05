@@ -5,7 +5,6 @@ use alloy_provider::Provider;
 use alloy_rpc_types::Block;
 use eyre::WrapErr;
 use foundry_common::{provider::ProviderBuilder, ALCHEMY_FREE_TIER_CUPS};
-use foundry_compilers::utils::RuntimeOrHandle;
 use foundry_config::{Chain, Config};
 use revm::primitives::{BlockEnv, CfgEnv, TxEnv};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -201,7 +200,7 @@ impl EvmOpts {
                 .ok()
                 .unwrap_or_else(|| panic!("Failed to establish provider to {url}"));
 
-            if let Ok(id) = RuntimeOrHandle::new().block_on(provider.get_chain_id()) {
+            if let Ok(id) = foundry_common::block_on(provider.get_chain_id()) {
                 return Some(Chain::from(id));
             }
         }
