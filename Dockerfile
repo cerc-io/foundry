@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM alpine:3.16 as build-environment
+FROM alpine:3.18 as build-environment
 
 ARG TARGETARCH
 ARG BUILDPLATFORM
@@ -28,8 +28,10 @@ RUN if [[ -z "$BUILDPLATFORM" ]] ; then echo Skipping BuildKit directives ; else
     && mv target/release/forge out/forge \
     && mv target/release/cast out/cast \
     && mv target/release/anvil out/anvil \
+    && mv target/release/chisel out/chisel \
     && strip out/forge \
     && strip out/cast \
+    && strip out/chisel \
     && strip out/anvil;
 
 FROM docker.io/frolvlad/alpine-glibc:alpine-3.16_glibc-2.34 as foundry-client
@@ -39,6 +41,7 @@ RUN apk add --no-cache linux-headers git
 COPY --from=build-environment /opt/foundry/out/forge /usr/local/bin/forge
 COPY --from=build-environment /opt/foundry/out/cast /usr/local/bin/cast
 COPY --from=build-environment /opt/foundry/out/anvil /usr/local/bin/anvil
+COPY --from=build-environment /opt/foundry/out/chisel /usr/local/bin/chisel
 
 RUN adduser -Du 1000 foundry
 

@@ -1,225 +1,181 @@
-on:
-    push:
-        branches:
-            - master
-    pull_request:
-
 name: test
 
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
-    CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: always
 
 jobs:
-    build-tests:
-        name: build tests / ${{ matrix.archive.name }}
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                archive:
-                    - name: unit-tests
-                      file: nextest-unit.tar.zst
-                      flags: --workspace --all-features --lib --bins
-                    - name: integration-tests
-                      file: nextest-integration.tar.zst
-                      flags: --workspace
-                    - name: external-integration-tests
-                      file: nextest-external-integration.tar.zst
-                      flags: -p foundry-cli --features external-integration-tests
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-            - name: Install toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  profile: minimal
-                  override: true
-            - uses: Swatinem/rust-cache@v1
-              with:
-                  cache-on-failure: true
-            - name: Install nextest
-              uses: taiki-e/install-action@nextest
-
-            - name: Build archive (unit tests)
-              run: cargo nextest archive --locked ${{ matrix.archive.flags }} --archive-file ${{ matrix.archive.file }}
-            - name: Upload archive
-              uses: actions/upload-artifact@v3
-              with:
-                  name: ${{ matrix.archive.name }}
-                  path: ${{ matrix.archive.file }}
-
-    unit:
-        name: unit tests / ${{ matrix.job.name }}
-        runs-on: ubuntu-latest
-        needs: build-tests
-        timeout-minutes: 60
-        strategy:
-            matrix:
-                job:
-                    - name: non-forking
-                      filter: "!test(~fork) & !test(~live)"
-                    - name: forking
-                      filter: "test(~fork) & !test(~live)"
+  matrices:
+    name: build matrices
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.gen.outputs.test-matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      - name: Generate matrices
+        id: gen
         env:
-            ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/C3JEvfW6VgtqZQa-Qp1E-2srEiIc02sD
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-            - name: Install nextest
-              uses: taiki-e/install-action@nextest
-            - uses: dtolnay/rust-toolchain@stable
-            - name: Download archives
-              uses: actions/download-artifact@v3
-              with:
-                  name: unit-tests
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          output=$(python3 .github/scripts/matrices.py)
+          echo "::debug::test-matrix=$output"
+          echo "test-matrix=$output" >> $GITHUB_OUTPUT
 
-            - name: cargo nextest
-              run: |
-                # see https://github.com/foundry-rs/foundry/pull/3959
-                export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib"
-                cargo nextest run --retries 3 --archive-file nextest-unit.tar.zst -E '${{ matrix.job.filter }}'
+  test:
+    name: test ${{ matrix.name }}
+    runs-on: ${{ matrix.runner_label }}
+    timeout-minutes: 60
+    needs: matrices
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrices.outputs.test-matrix) }}
+    env:
+      ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/C3JEvfW6VgtqZQa-Qp1E-2srEiIc02sD
+      CARGO_PROFILE_DEV_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+      - uses: taiki-e/install-action@nextest
 
-    integration:
-        name: integration tests / ${{ matrix.job.name }}
-        runs-on: ubuntu-latest
-        needs: build-tests
-        strategy:
-            matrix:
-                job:
-                    - name: non-forking
-                      filter: "!test(~fork) & !test(~live)"
-                    - name: forking
-                      filter: "test(~fork) & !test(~live)"
-                partition: [1, 2]
+      # External tests dependencies
+      - name: Setup Node.js
+        if: contains(matrix.name, 'external')
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Bun
+        if: contains(matrix.name, 'external') && !contains(matrix.runner_label, 'windows')
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      - name: Setup Python
+        if: contains(matrix.name, 'external')
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install Vyper
+        if: contains(matrix.name, 'external')
+        run: pip install vyper
+
+      - name: Forge RPC cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.foundry/cache
+            ~/.config/.foundry/cache
+          key: rpc-cache-${{ hashFiles('crates/forge/tests/rpc-cache-keyfile') }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Setup Git config
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "<>"
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: Test
         env:
-            ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/C3JEvfW6VgtqZQa-Qp1E-2srEiIc02sD
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-            - name: Install nextest
-              uses: taiki-e/install-action@nextest
-            - uses: dtolnay/rust-toolchain@stable
-            - name: Download archives
-              uses: actions/download-artifact@v3
-              with:
-                  name: integration-tests
+          SVM_TARGET_PLATFORM: ${{ matrix.svm_target_platform }}
+        run: cargo nextest run ${{ matrix.flags }}
 
-            - name: Forge RPC cache
-              uses: actions/cache@v3
-              if: matrix.job.name != 'non-forking'
-              with:
-                  path: "$HOME/.foundry/cache"
-                  key: rpc-cache-${{ hashFiles('cli/tests/rpc-cache-keyfile') }}
-            - name: Setup git config
-              run: |
-                  git config --global user.name "GitHub Actions Bot"
-                  git config --global user.email "<>"
-
-            - name: cargo nextest
-              run: |
-                # see https://github.com/foundry-rs/foundry/pull/3959
-                export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib"
-                cargo nextest run --partition count:${{ matrix.partition }}/2 --retries 3 --archive-file nextest-integration.tar.zst -E '${{ matrix.job.filter }}'
-
-    external-integration:
-        name: external integration tests / ${{ matrix.job.name }}
-        runs-on: ubuntu-latest
-        needs: build-tests
-        strategy:
-            matrix:
-                job:
-                    - name: non-forking
-                      filter: "!test(~fork_integration) & !test(~live)"
-                    - name: forking
-                      filter: "test(~fork_integration) & !test(~live)"
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo doc --workspace --all-features --no-deps --document-private-items
         env:
-            ETH_RPC_URL: https://eth-mainnet.alchemyapi.io/v2/C3JEvfW6VgtqZQa-Qp1E-2srEiIc02sD
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-            - name: Install nextest
-              uses: taiki-e/install-action@nextest
-            - uses: dtolnay/rust-toolchain@stable
-            - name: Download archives
-              uses: actions/download-artifact@v3
-              with:
-                  name: external-integration-tests
+          RUSTDOCFLAGS:
+            --cfg docsrs --show-type-layout --generate-link-to-definition --enable-index-page
+            -Zunstable-options
+      - name: Deploy documentation
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: target/doc
+          force_orphan: true
 
-            - name: Forge RPC cache
-              uses: actions/cache@v3
-              if: matrix.job.name != 'non-forking'
-              with:
-                  path: "$HOME/.foundry/cache"
-                  key: rpc-cache-${{ hashFiles('cli/tests/rpc-cache-keyfile') }}
+  doctest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo test --workspace --doc
 
-            - name: Setup git config
-              run: |
-                  git config --global user.name "GitHub Actions Bot"
-                  git config --global user.email "<>"
+  clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo clippy --workspace --all-targets --all-features
+        env:
+          RUSTFLAGS: -Dwarnings
 
-            - name: Force use of HTTPS for submodules
-              run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+  rustfmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2024-02-03
+          components: rustfmt
+      - run: cargo fmt --all --check
 
-            - name: cargo nextest
-              run: |
-                # see https://github.com/foundry-rs/foundry/pull/3959
-                export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib"
-                cargo nextest run --retries 3 --archive-file nextest-external-integration.tar.zst -E '${{ matrix.job.filter }}'
+  forge-fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: forge fmt
+        shell: bash
+        # We have to ignore at shell level because testdata/ is not a valid Foundry project,
+        # so running `forge fmt` with `--root testdata` won't actually check anything
+        run: |
+          shopt -s extglob
+          cargo run --bin forge -- fmt --check $(find testdata -name '*.sol' ! -name Vm.sol)
 
-    doc:
-        name: doc tests
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-            - name: Install toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  profile: minimal
-                  override: true
-            - uses: Swatinem/rust-cache@v1
-              with:
-                  cache-on-failure: true
-
-            - name: cargo test
-              run: cargo test --locked --workspace --all-features --doc
-
-    lint:
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout sources
-              uses: actions/checkout@v2
-
-            - name: Install toolchain
-              uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: nightly
-                  profile: minimal
-                  components: rustfmt, clippy
-                  override: true
-
-            - uses: Swatinem/rust-cache@v1
-              with:
-                  cache-on-failure: true
-
-            - name: cargo fmt
-              uses: actions-rs/cargo@v1
-              with:
-                  command: fmt
-                  args: --all --check
-
-            - name: cargo clippy
-              uses: actions-rs/clippy-check@v1
-              with:
-                  args: --all --all-features -- -D warnings
-                  token: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: forge fmt
-              run: cargo run --bin forge -- fmt --check testdata/
-
-    cross-platform:
-        name: Cross-platform tests
-        if: github.event_name != 'pull_request'
-        needs: [integration, lint, doc, unit]
-        uses: ./.github/workflows/cross-platform.yml
+  crate-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-hack
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - run: cargo hack check
